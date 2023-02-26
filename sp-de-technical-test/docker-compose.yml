@@ -1,0 +1,13 @@
+version: '3.2'
+
+services:
+  sp_db:
+    container_name: sp_postgres
+    build: .
+    ports:
+      - "5432:5432"
+    volumes:
+      - .:/code
+    environment:
+      POSTGRES_PASSWORD: sp_technical_test
+    command: ["postgres", "-c", "log_statement=all"]

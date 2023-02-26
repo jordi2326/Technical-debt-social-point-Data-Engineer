@@ -1,0 +1,39 @@
+El data modeling que se ha utilizado para realizar este proceso de etl se separa en 3 partes:
+    .Extracción -> pasar de los ficheros .log (json) a una tabla de sql y conexión de la API de exchange rate
+                   para poder obtener la respuesta en formato json para poder pasarlo a una tabla sql
+    .Transformación-> una vez cargadas las fuentes orígenes se debe de chequear la información, eliminar datos erróneos si los hay, filtering y eliminación de duplicidad,
+                      en estos procesos se crearán tablas auxiliares para poder realizar las funciones descritas de una forma más limpia y ordenada. Una vez normalizados los datos, limpios y sin duplicidad se pasa a la siguiente fase.
+    .Loading (Carga)-> en esta parte es cargar los datos limpios a las tablas finales y la realización del cálculo de los kpi con la combinación de las tablas finales limpias.    
+
+Después de esta breve descripción de como ha sido el funcionamiento de la etl vamos a describir más detalladamente las capas y su modelaje:
+
+Extracción:
+    Partimos de 2 archivos log ->log_monetization_transaction.log(contiene información sobre las transacciones)
+                                log_user_register.log (contiene la información sobre el registro del usuario)
+    Y el esquema conceptual del formato log al formato tabla es el siguiente:
+        log_monetization_transaction.log -> Tabla sql (log_monetization_transaction)
+        log_user_register.log -> Tabla sql (log_user_register)
+
+   En el caso de la api se realiza la conexión y se obtiene un json que se cargara en la tabla CHANGE_RATE , esta tabla compuesta por la fecha del cambio , país (código ISO) y el ratio de intercambio. Se define el país y la fecha como primary key porque solo queremos una fila única de esos dos valores. 
+   No se da el caso (raramente en economía) que sé de una variación de moneda muy brusca en el mismo día.
+
+
+Transformación:
+    Ya tenemos las tablas creadas en la base de datos, ahora solo queda realizar las transformaciones, en las siguientes líneas se detalla el esquema:
+        log_user_register->[Primero se busca si hay un user_id duplicado y si lo hay se escoge el que tiene minima fecha de creación porque es el primer registro y normalización del campo plataforma]->taux_log_user_register
+        taux_log_user_register->[Se mira si hay un usuario con todos los campos igual para solo quedarnos con uno]->taux_log_user_register2
+
+        log_monetization_transaction->[Se realiza la normalización del campo currency]->taux_log_monetization_transaction
+        taux_log_monetization_transaction->[normalización del campo plataforma y eliminación de duplicidad en este caso se opta si tenemos una transacción idéntica sumar los importes]-> taux_log_monetization_transaction2
+        taux_log_monetization_transaction2->[se crea un campo nuevo con la aplicación del campo de divisa con la utilización de la tabla CHANGE_RATE ]->taux_log_monetization_transaction_orderamountdollar
+
+Carga (Loading):
+    Ya se tienen los datos limpios, ahora se cargan estos datos en las tablas finales como son tx_log_monetization_transaction , tx_log_user_register y finalmente se calcularan los kpi en la tabla tx_final_kpi_view.
+    Las tablas tendrán el mismo formato que las tablas originales, es decir, el nombre de campos menos en la de transacciones que se le crea el campo con el valor en dólares, con el matiz que se añaden claves primarias y secundarias.
+    tx_log_monetization_transaction-> pk order_transaction_id , fk user_id referencia a user_id de tx_log_user_register
+    tx_log_user_register-> pk user_id .
+    La combinación de estas dos tablas se utiliza para calcular los indicamos que se insertan en la tabla tx_final_kpi_view
+    El esquema es el siguiente:
+        taux_log_monetization_transaction_orderamountdollar->[Carga los datos limpios]->tx_log_monetization_transaction
+        taux_log_user_register2->[Carga los datos límpios]->tx_log_user_register
+        La combinación de tx_log_monetization_transaction y tx_log_user_register->[Cálculo kpi]->tx_final_kpi_view

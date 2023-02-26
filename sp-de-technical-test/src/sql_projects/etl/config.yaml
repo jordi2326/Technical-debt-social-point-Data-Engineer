@@ -1,0 +1,4 @@
+connection_query: connection_query.sql
+
+order:
+  - etl.sql

@@ -1,0 +1,1 @@
+select count(1) = 1 as passed from sp_technical_test.sp_test;

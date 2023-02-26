@@ -1,0 +1,1 @@
+set search_path to sp_technical_test;
